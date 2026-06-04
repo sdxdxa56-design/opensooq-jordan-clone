@@ -6,6 +6,8 @@ import AdDetailsModal from './components/AdDetailsModal';
 import PostAdModal from './components/PostAdModal';
 import SyncPanel from './components/SyncPanel';
 import { Ad, CATEGORIES, JORDAN_CITIES } from './types';
+import { INITIAL_ADS } from './data';
+import { getSupabaseAds } from './supabase';
 import { Filter, SlidersHorizontal, RefreshCw, X, Heart, Shield, Sparkles, MapPin } from 'lucide-react';
 
 export default function App() {
@@ -22,25 +24,89 @@ export default function App() {
   const [activeAdDetail, setActiveAdDetail] = useState<Ad | null>(null);
   const [showPostModal, setShowPostModal] = useState(false);
 
+  const loadLocalFallback = () => {
+    let localAdsRaw = localStorage.getItem('open_sooq_ads');
+    let localAdList: Ad[] = [];
+    if (localAdsRaw) {
+      try {
+        localAdList = JSON.parse(localAdsRaw);
+      } catch (e) {
+        localAdList = [...INITIAL_ADS];
+      }
+    } else {
+      localAdList = [...INITIAL_ADS];
+      localStorage.setItem('open_sooq_ads', JSON.stringify(INITIAL_ADS));
+    }
+
+    // Apply exact same filters client-side!
+    let filtered = [...localAdList];
+    if (selectedCategory) {
+      filtered = filtered.filter(ad => ad.category === selectedCategory);
+    }
+    if (selectedSubcategory) {
+      filtered = filtered.filter(ad => ad.subcategory === selectedSubcategory);
+    }
+    if (selectedCity) {
+      filtered = filtered.filter(ad => ad.city === selectedCity);
+    }
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      filtered = filtered.filter(ad =>
+        ad.title.toLowerCase().includes(q) ||
+        ad.description.toLowerCase().includes(q)
+      );
+    }
+    if (minPrice) {
+      filtered = filtered.filter(ad => ad.price >= Number(minPrice));
+    }
+    if (maxPrice) {
+      filtered = filtered.filter(ad => ad.price <= Number(maxPrice));
+    }
+
+    setAds(filtered);
+  };
+
   // Load list from back-end server REST API on mount
   const fetchAds = async () => {
     setLoading(true);
     try {
-      let url = `/api/ads?`;
-      if (selectedCategory) url += `category=${selectedCategory}&`;
-      if (selectedSubcategory) url += `subcategory=${selectedSubcategory}&`;
-      if (selectedCity) url += `city=${selectedCity}&`;
-      if (searchTerm) url += `search=${encodeURIComponent(searchTerm)}&`;
-      if (minPrice) url += `minPrice=${minPrice}&`;
-      if (maxPrice) url += `maxPrice=${maxPrice}&`;
+      const supabaseResult = await getSupabaseAds({
+        category: selectedCategory,
+        subcategory: selectedSubcategory,
+        city: selectedCity,
+        search: searchTerm,
+      });
 
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        setAds(data);
+      if (supabaseResult) {
+        let finalAds = supabaseResult;
+        if (minPrice) {
+          finalAds = finalAds.filter(ad => ad.price >= Number(minPrice));
+        }
+        if (maxPrice) {
+          finalAds = finalAds.filter(ad => ad.price <= Number(maxPrice));
+        }
+        setAds(finalAds);
+      } else {
+        // Fallback to Express backend URL
+        let url = `/api/ads?`;
+        if (selectedCategory) url += `category=${selectedCategory}&`;
+        if (selectedSubcategory) url += `subcategory=${selectedSubcategory}&`;
+        if (selectedCity) url += `city=${selectedCity}&`;
+        if (searchTerm) url += `search=${encodeURIComponent(searchTerm)}&`;
+        if (minPrice) url += `minPrice=${minPrice}&`;
+        if (maxPrice) url += `maxPrice=${maxPrice}&`;
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setAds(data);
+        } else {
+          loadLocalFallback();
+        }
       }
     } catch (e) {
-      console.error('Error while getting classified ads', e);
+      console.warn('Backend server and Supabase query fell back to local client storage:', e);
+      loadLocalFallback();
     } finally {
       setLoading(false);
     }
