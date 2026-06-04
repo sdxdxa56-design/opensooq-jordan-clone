@@ -1,0 +1,6 @@
+{
+  "name": "OpenSooq Clone",
+  "description": "A high-fidelity Arabic classifieds marketplace clone of OpenSooq, featuring localized Jordan categories, advanced filtering, ad posting, and RTL layout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
