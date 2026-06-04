@@ -3,6 +3,7 @@ import { Eye, MapPin, Phone, MessageCircle, Star } from 'lucide-react';
 import { Ad } from '../types';
 
 interface AdCardProps {
+  key?: string;
   ad: Ad;
   onAdClick: (ad: Ad) => void;
 }
