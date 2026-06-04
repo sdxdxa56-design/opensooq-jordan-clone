@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X, Check, ArrowRight, HelpCircle, AlertCircle, ShoppingBag } from 'lucide-react';
 import { CATEGORIES, JORDAN_CITIES } from '../types';
+import { INITIAL_ADS } from '../data';
+import { insertSupabaseAd } from '../supabase';
 
 interface PostAdModalProps {
   onClose: () => void;
@@ -68,21 +70,50 @@ export default function PostAdModal({ onClose, onPostSuccess }: PostAdModalProps
     };
 
     try {
-      const res = await fetch('/api/ads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(postData),
-      });
-
-      if (!res.ok) {
-        throw new Error('فشل رفع الإعلان إلى الخادم');
-      }
-
+      // Prioritize inserting directly to Supabase production database
+      await insertSupabaseAd(postData);
       onPostSuccess();
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'تعذر الإتصال بالخادم الرئيسي لإدراج الإعلان.');
+    } catch (supabaseErr: any) {
+      console.warn('Supabase insertion failed, falling back to Express API:', supabaseErr);
+      try {
+        const res = await fetch('/api/ads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(postData),
+        });
+
+        if (!res.ok) {
+          throw new Error('فشل رفع الإعلان إلى الخادم');
+        }
+
+        onPostSuccess();
+      } catch (err: any) {
+        console.warn('Backend offline, falling back to local storage saving:', err);
+        try {
+          let localAdsRaw = localStorage.getItem('open_sooq_ads');
+          let currentLocalAds = [];
+          if (localAdsRaw) {
+            currentLocalAds = JSON.parse(localAdsRaw);
+          } else {
+            currentLocalAds = [...INITIAL_ADS];
+          }
+
+          const newLocalAd = {
+            ...postData,
+            id: String(currentLocalAds.length + 100),
+            createdAt: "الآن (حافظة محليّة)",
+            views: 1,
+          };
+
+          currentLocalAds.unshift(newLocalAd);
+          localStorage.setItem('open_sooq_ads', JSON.stringify(currentLocalAds));
+          onPostSuccess();
+        } catch (storageErr) {
+          setErrorMsg('تعذر الإتصال بالخادم الرئيسي لإدراج الإعلان ولم نتمكن من حفظه محلياً.');
+        }
+      }
     } finally {
       setIsSubmitting(false);
     }
